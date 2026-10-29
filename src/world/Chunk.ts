@@ -9,6 +9,8 @@ export function blockIndex(x: number, y: number, z: number): number {
 export class Chunk {
   /** Edited by the player since generation: must be kept when unloaded. */
   modified = false;
+  /** Bumped on every player edit, so caches derived from the blocks know they are stale. */
+  revision = 0;
 
   constructor(
     readonly cx: number,

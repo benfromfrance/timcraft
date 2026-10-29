@@ -6,6 +6,7 @@ import { BlockId } from '../world/blocks';
 import { CHUNK_HEIGHT } from '../world/Chunk';
 import { toChunkCoord } from '../world/coords';
 import type { World } from '../world/World';
+import { HealthBar } from './HealthBar';
 import { createBrain, think, type Behavior, type MobBrain } from './mobAI';
 import type { MobModel } from './MobModel';
 import { pickMobType, type MobType } from './mobTypes';
@@ -19,6 +20,8 @@ const SPAWN_MIN_DISTANCE = 20;
 const SPAWN_MAX_DISTANCE = 32;
 const DESPAWN_DISTANCE = 72;
 const DEATH_DURATION = 0.8;
+/** The health bar shows this long after a hit, fading out over the last second. */
+const HEALTH_BAR = { duration: 5, fade: 1 };
 const KNOCKBACK_SPEED = 7;
 const KNOCKBACK_LIFT = 5.5;
 /** How fast mobs catch fire at nightfall / burn out at dawn (per second). */
@@ -34,15 +37,21 @@ export interface Mob {
   brain: MobBrain;
   model: MobModel;
   health: number;
+  maxHealth: number;
   blocked: boolean;
   attackCooldown: number;
   leapCooldown: number;
   /** 0 … 1, ablaze at night. */
   fire: number;
+  /** Stays ablaze (and enraged) even by day. */
+  alwaysBurning: boolean;
   /** Animation timers, counting down to 0 (death counts up from 0 once killed). */
   attackAnim: number;
   hurtTimer: number;
   deathTimer: number | null;
+  /** Created on the first hit. */
+  healthBar: HealthBar | null;
+  healthBarTimer: number;
   walkPhase: number;
 }
 
@@ -57,6 +66,8 @@ export class MobManager {
   readonly mobs: Mob[] = [];
   /** Called when a mob strikes the player; `from` is the attacker's position. */
   onPlayerHit: (damage: number, from: Vec3, knockback: number) => void = () => {};
+  /** Natural spawning is skipped where this returns false (e.g. inside the castle). */
+  canSpawnAt: (x: number, z: number) => boolean = () => true;
   private spawnTimer = SPAWN_RULES.day.interval;
 
   constructor(
@@ -79,7 +90,15 @@ export class MobManager {
       const enraged = mob.fire > 0.5;
       const target = alive && hostile ? player.position : null;
 
-      const move = think(mob.body, mob.brain, target, mob.blocked, dt, Math.random, this.behavior(mob, enraged));
+      const move = think(
+        mob.body,
+        mob.brain,
+        target,
+        mob.blocked,
+        dt,
+        Math.random,
+        this.behavior(mob, enraged),
+      );
       if (!alive) move.forward = 0;
       mob.leapCooldown = Math.max(0, mob.leapCooldown - dt);
       if (target && mob.type.leaps) this.tryLeap(mob, target);
@@ -114,9 +133,13 @@ export class MobManager {
         continue;
       }
 
-      const fireTarget = sky.night ? 1 : 0;
-      mob.fire += Math.sign(fireTarget - mob.fire) * Math.min(Math.abs(fireTarget - mob.fire), dt * FIRE_RATE);
+      const fireTarget = sky.night || mob.alwaysBurning ? 1 : 0;
+      mob.fire +=
+        Math.sign(fireTarget - mob.fire) *
+        Math.min(Math.abs(fireTarget - mob.fire), dt * FIRE_RATE);
       mob.hurtTimer = Math.max(0, mob.hurtTimer - dt);
+      mob.healthBarTimer = Math.max(0, mob.healthBarTimer - dt);
+      mob.healthBar?.setOpacity(Math.min(1, mob.healthBarTimer / HEALTH_BAR.fade));
       mob.attackAnim = Math.max(0, mob.attackAnim - dt * 3);
       const speed = Math.hypot(mob.body.velocity.x, mob.body.velocity.z);
       mob.walkPhase += speed * dt * 2.6;
@@ -158,6 +181,7 @@ export class MobManager {
     if (mob.deathTimer !== null) return false;
     mob.health -= damage;
     mob.hurtTimer = 0.3;
+    this.showHealth(mob);
     const strength = 1 - mob.type.knockbackResist;
     const v = mob.body.velocity;
     const dx = mob.body.position.x - from.x;
@@ -169,6 +193,7 @@ export class MobManager {
     if (strength > 0.3) mob.body.onGround = false; // keeps air control low so the knockback carries
     if (mob.health > 0) return false;
     mob.deathTimer = 0;
+    mob.healthBarTimer = Math.min(mob.healthBarTimer, 0.3); // the emptied bar vanishes as it falls
     return true;
   }
 
@@ -180,7 +205,7 @@ export class MobManager {
     }
   }
 
-  spawnAt(position: Vec3, type: MobType, fire = 0): Mob {
+  spawnAt(position: Vec3, type: MobType, fire = 0, alwaysBurning = false): Mob {
     const model = type.createModel();
     this.scene.add(model.root);
     const mob: Mob = {
@@ -196,13 +221,17 @@ export class MobManager {
       brain: createBrain(),
       model,
       health: type.health,
+      maxHealth: type.health,
       blocked: false,
       attackCooldown: type.attackCooldown,
       leapCooldown: LEAP.cooldown,
       fire,
+      alwaysBurning,
       attackAnim: 0,
       hurtTimer: 0,
       deathTimer: null,
+      healthBar: null,
+      healthBarTimer: 0,
       walkPhase: 0,
     };
     this.mobs.push(mob);
@@ -248,7 +277,7 @@ export class MobManager {
     const distance = SPAWN_MIN_DISTANCE + Math.random() * (SPAWN_MAX_DISTANCE - SPAWN_MIN_DISTANCE);
     const x = Math.floor(center.x + Math.cos(angle) * distance);
     const z = Math.floor(center.z + Math.sin(angle) * distance);
-    if (!this.world.getChunk(toChunkCoord(x), toChunkCoord(z))) return;
+    if (!this.world.getChunk(toChunkCoord(x), toChunkCoord(z)) || !this.canSpawnAt(x, z)) return;
 
     for (let y = CHUNK_HEIGHT - 1; y > 0; y--) {
       const id = this.world.getBlock(x, y, z);
@@ -256,7 +285,8 @@ export class MobManager {
       if (id === BlockId.LEAVES) return; // not on treetops
       const type = pickMobType(night, Math.random);
       const position = { x: x + 0.5, y: y + 1, z: z + 0.5 };
-      if (this.fits(position.x, position.y, position.z, type.size)) this.spawnAt(position, type, night ? 1 : 0);
+      if (this.fits(position.x, position.y, position.z, type.size))
+        this.spawnAt(position, type, night ? 1 : 0);
       return;
     }
   }
@@ -301,9 +331,31 @@ export class MobManager {
     return true;
   }
 
+  private showHealth(mob: Mob): void {
+    if (!mob.healthBar) {
+      const { width, height } = mob.type.size;
+      mob.healthBar = new HealthBar(Math.max(0.8, Math.min(1.4, width * 1.2)));
+      mob.healthBar.sprite.position.y = height + 0.35;
+      mob.model.root.add(mob.healthBar.sprite);
+    }
+    mob.healthBar.set(mob.health / mob.maxHealth);
+    mob.healthBarTimer = HEALTH_BAR.duration;
+  }
+
+  /** True once the mob is dying or gone (killed, despawned or cleared). */
+  isGone(mob: Mob): boolean {
+    return mob.deathTimer !== null || !this.mobs.includes(mob);
+  }
+
+  /** Removes a mob without killing it (no death animation). */
+  discard(mob: Mob): void {
+    if (this.mobs.includes(mob)) this.remove(mob);
+  }
+
   private remove(mob: Mob): void {
     this.scene.remove(mob.model.root);
     mob.model.dispose();
+    mob.healthBar?.dispose();
     this.mobs.splice(this.mobs.indexOf(mob), 1);
   }
 }

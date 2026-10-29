@@ -122,6 +122,66 @@ body.menu-open .crosshair {
   opacity: 1;
 }
 
+.minimap {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.minimap[hidden] {
+  display: none;
+}
+
+.minimap canvas {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 3px solid rgba(15, 15, 15, 0.8);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  image-rendering: pixelated;
+}
+
+.minimap-info {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  font: 12px/1.4 ui-monospace, monospace;
+  white-space: pre;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.banner {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(640px, calc(100vw - 32px));
+  text-align: center;
+  text-shadow: 2px 2px 0 #000;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+.banner.visible {
+  opacity: 1;
+}
+
+.banner-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #ffe08a;
+}
+
+.banner-text {
+  margin-top: 6px;
+  font-size: 17px;
+}
+
 .debug {
   position: absolute;
   top: 8px;

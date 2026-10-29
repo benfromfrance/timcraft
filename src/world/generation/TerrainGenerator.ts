@@ -2,6 +2,9 @@ import alea from 'alea';
 import { createNoise2D, createNoise3D, type NoiseFunction2D } from 'simplex-noise';
 import { BlockId } from '../blocks';
 import { Chunk, CHUNK_HEIGHT, CHUNK_SIZE } from '../Chunk';
+import type { Blueprint } from './blueprint';
+import { CASTLE_FLOOR_SAMPLES, castleLayout } from './castle';
+import { FORTRESS_FLOOR_SAMPLES, fortressLayout } from './fortress';
 
 export const SEA_LEVEL = 62;
 
@@ -33,6 +36,10 @@ export class TerrainGenerator {
   private readonly detail: NoiseFunction2D;
   private readonly cave: ReturnType<typeof createNoise3D>;
   private readonly hashSeed: number;
+  /** Floor heights of the castle (north of the spawn point) and of the fortress (east of it). */
+  readonly castleFloor: number;
+  readonly fortressFloor: number;
+  private readonly buildings: { blueprint: Blueprint; floorY: number }[];
 
   constructor(seed: string) {
     const prng = alea(seed);
@@ -40,6 +47,15 @@ export class TerrainGenerator {
     this.detail = createNoise2D(prng);
     this.cave = createNoise3D(prng);
     this.hashSeed = Math.floor(prng() * 4294967296);
+    const heightAt = (x: number, z: number) => this.heightAt(x, z);
+    const castle = castleLayout().blueprint;
+    const fortress = fortressLayout().blueprint;
+    this.castleFloor = castle.floorY(heightAt, CASTLE_FLOOR_SAMPLES, SEA_LEVEL);
+    this.fortressFloor = fortress.floorY(heightAt, FORTRESS_FLOOR_SAMPLES, SEA_LEVEL);
+    this.buildings = [
+      { blueprint: castle, floorY: this.castleFloor },
+      { blueprint: fortress, floorY: this.fortressFloor },
+    ];
   }
 
   heightAt(wx: number, wz: number): number {
@@ -74,6 +90,9 @@ export class TerrainGenerator {
     }
 
     this.placeTrees(chunk);
+    for (const { blueprint, floorY } of this.buildings) {
+      blueprint.stamp(chunk, floorY, (x, z) => this.heightAt(x, z));
+    }
     return chunk;
   }
 

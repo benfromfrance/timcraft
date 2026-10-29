@@ -41,7 +41,10 @@ function handle(a: number, p: number, from: number, to: number): RGBA | null {
   return opaque(p === 0 ? HANDLE : HANDLE_DARK);
 }
 
-function swordPainter(edge: [number, number, number], core: [number, number, number]): PainterFactory {
+function swordPainter(
+  edge: [number, number, number],
+  core: [number, number, number],
+): PainterFactory {
   return () => (x, y) => {
     const { a, p } = diagonal(x, y);
     if (a >= -1 && a <= 13 && Math.abs(p) <= 1) return opaque(p === 0 ? core : edge);
@@ -69,8 +72,7 @@ const PAINTERS: Record<number, PainterFactory> = {
     if (d > 6.5) return vary(rand, [104, 80, 48], 0.2);
     return vary(rand, Math.floor(d) % 2 ? [182, 146, 92] : [160, 126, 76], 0.08);
   },
-  [Tile.LEAVES]: (rand) => () =>
-    rand() < 0.18 ? [0, 0, 0, 0] : vary(rand, [58, 122, 42], 0.4),
+  [Tile.LEAVES]: (rand) => () => (rand() < 0.18 ? [0, 0, 0, 0] : vary(rand, [58, 122, 42], 0.4)),
   [Tile.PLANKS]: (rand) => (x, y) => {
     const row = Math.floor(y / 4);
     const seam = y % 4 === 3 || x === (row * 7 + 3) % TILE_SIZE;
@@ -131,7 +133,74 @@ const PAINTERS: Record<number, PainterFactory> = {
   [Tile.STONE_AXE]: () => (x, y) => {
     const { a, p } = diagonal(x, y);
     if (a >= 3 && a <= 10 && p >= -6 && p <= -1) {
-      return opaque(p <= -5 ? [178, 178, 186] : a === 3 || a === 10 ? [96, 96, 102] : [134, 134, 140]);
+      return opaque(
+        p <= -5 ? [178, 178, 186] : a === 3 || a === 10 ? [96, 96, 102] : [134, 134, 140],
+      );
+    }
+    return handle(a, p, -12, 11) ?? CLEAR;
+  },
+  [Tile.CASTLE_STONE]: (rand) => castleStone(rand, false),
+  [Tile.CRACKED_STONE]: (rand) => castleStone(rand, true),
+  [Tile.PORTCULLIS]: (rand) => (x, y) => {
+    const bar = x % 5 === 1 || x % 5 === 2;
+    const rail = y % 8 === 2 || y % 8 === 3;
+    if (!bar && !rail) return CLEAR;
+    const spike = y >= TILE_SIZE - 2 && !rail;
+    return vary(rand, bar && rail ? [92, 92, 100] : [64, 64, 72], 0.1, spike ? 0.8 : 1);
+  },
+  [Tile.CHEST_SIDE]: (rand) => (x, y) => {
+    const frame = x === 0 || x === TILE_SIZE - 1 || y === TILE_SIZE - 1;
+    if (y === 5 || y === 6) {
+      if (x >= 6 && x <= 9 && y >= 5) return vary(rand, [236, 196, 70], 0.06); // latch
+      return vary(rand, [70, 64, 60], 0.08); // iron band under the lid
+    }
+    if (x >= 7 && x <= 8 && y === 7) return vary(rand, [236, 196, 70], 0.06);
+    return vary(rand, frame ? [104, 66, 30] : [156, 104, 48], 0.12, y % 4 === 0 ? 0.9 : 1);
+  },
+  [Tile.CHEST_TOP]: (rand) => (x, y) => {
+    if (x === 0 || y === 0 || x === TILE_SIZE - 1 || y === TILE_SIZE - 1)
+      return vary(rand, [70, 64, 60], 0.08);
+    if (x === 5 || x === 10) return vary(rand, [80, 74, 68], 0.08);
+    return vary(rand, [164, 110, 52], 0.12, y % 4 === 0 ? 0.9 : 1);
+  },
+  [Tile.GOLD]: (rand) => (x, y) => {
+    const edge = x === 0 || y === 0 || x === TILE_SIZE - 1 || y === TILE_SIZE - 1;
+    const shine = (x + y === 6 || x + y === 7) && x > 1 && y > 1;
+    if (shine) return [255, 250, 200, 255];
+    return vary(rand, edge ? [198, 148, 36] : [240, 196, 64], 0.08);
+  },
+  [Tile.RUNE_SWORD]: swordPainter([70, 170, 210], [196, 244, 255]),
+  [Tile.DARK_STONE]: (rand) => castleStone(rand, false, [70, 64, 82], [34, 30, 42]),
+  // Large square slabs; the crumbling ones use the same tile, so they cannot be told apart.
+  [Tile.FLAGSTONE]: (rand) => (x, y) => {
+    if (x === 0 || y === 0) return vary(rand, [62, 58, 56], 0.08);
+    const k = x === 1 || y === 1 ? 1.12 : x === 15 || y === 15 ? 0.88 : 1;
+    return vary(rand, [118, 112, 104], 0.1, k);
+  },
+  [Tile.SPIKES]: (rand) => (x, y) => {
+    const centre = Math.floor(x / 4) * 4 + 1.5;
+    const height = 13 - Math.abs(x - centre) * 5;
+    if (TILE_SIZE - 1 - y > height) return CLEAR;
+    const tip = TILE_SIZE - 1 - y > height - 3;
+    return vary(rand, tip ? [214, 214, 222] : [118, 118, 128], 0.08);
+  },
+  [Tile.SPIKES_TOP]: (rand) => (x, y) => {
+    const dx = (x % 4) - 1.5;
+    const dy = (y % 4) - 1.5;
+    if (Math.abs(dx) + Math.abs(dy) > 1.5) return CLEAR;
+    return vary(rand, Math.abs(dx) + Math.abs(dy) < 1 ? [220, 220, 228] : [120, 120, 130], 0.08);
+  },
+  [Tile.PLATE]: (rand) => (x, y) => {
+    if (x === 0 || y === 0 || x === 15 || y === 15) return vary(rand, [62, 58, 56], 0.08);
+    const inner = x >= 3 && x <= 12 && y >= 3 && y <= 12;
+    return vary(rand, inner ? [214, 176, 70] : [150, 122, 52], 0.08, x === 3 || y === 3 ? 1.15 : 1);
+  },
+  [Tile.RUNE_AXE]: () => (x, y) => {
+    const { a, p } = diagonal(x, y);
+    if (a >= 3 && a <= 10 && p >= -6 && p <= -1) {
+      return opaque(
+        p <= -5 ? [196, 244, 255] : a === 3 || a === 10 ? [40, 110, 150] : [70, 170, 210],
+      );
     }
     return handle(a, p, -12, 11) ?? CLEAR;
   },
@@ -143,6 +212,27 @@ const PAINTERS: Record<number, PainterFactory> = {
     return vary(rand, [138, 138, 142], 0.1, highlight ? 1.12 : 1);
   },
 };
+
+/** Large dark blocks: the castle's unbreakable stone, optionally cracked (the breakable one). */
+function castleStone(
+  rand: () => number,
+  cracked: boolean,
+  stone: [number, number, number] = [96, 100, 114],
+  mortar: [number, number, number] = [52, 54, 64],
+): Painter {
+  return (x, y) => {
+    const row = Math.floor(y / 8);
+    const bx = (x + (row % 2) * 8) % 16;
+    if (y % 8 === 7 || bx === 15) return vary(rand, mortar, 0.08);
+    if (cracked) {
+      // A jagged crack running across the face.
+      const crack = Math.round(7 + Math.sin(x * 0.9) * 2 + (x > 8 ? (x - 8) * 0.6 : 0));
+      if (y === crack || (y === crack + 1 && x % 3 === 0)) return vary(rand, [36, 37, 44], 0.1);
+    }
+    const edge = y % 8 === 0 || bx === 0;
+    return vary(rand, stone, 0.12, edge ? 1.1 : 1);
+  };
+}
 
 export function createAtlasCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');

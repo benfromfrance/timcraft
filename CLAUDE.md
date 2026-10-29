@@ -46,10 +46,14 @@ src/
     ChunkStreamer.ts      # chargement/déchargement autour du joueur via les workers
     coords.ts             # conversions monde ↔ chunk (négatifs gérés)
     DayNight.ts           # cycle jour/nuit (10 min) : lumière, couleur du ciel, heure
-    Chunk.ts              # données d'un chunk (Uint8Array/Uint16Array)
+    Chunk.ts              # données d'un chunk (Uint8Array/Uint16Array), `revision` incrémentée à chaque édition
+    surface.ts            # bloc le plus haut de chaque colonne (mini-carte)
     blocks.ts             # registre des types de blocs (id, nom, solide, transparent, textures)
     generation/
       TerrainGenerator.ts # heightmap, biomes, grottes, arbres
+      blueprint.ts        # bâtiment = volume de blocs pur + estampillage dans les chunks (terrain nivelé autour)
+      castle.ts           # plan du château (nord du spawn)
+      fortress.ts         # plan de la Forteresse noire (à l’est) : 9 salles piégées
     meshing/
       mesher.ts           # construction des géométries (faces visibles + ambient occlusion)
   workers/
@@ -60,6 +64,7 @@ src/
     TextureAtlas.ts       # atlas 16×16 peint procéduralement au démarrage (textures originales)
     ChunkRenderer.ts      # un Mesh Three.js par chunk, libération GPU au déchargement
     ViewModel.ts          # bras arrondi + objet tenu à la 1re personne (scène éclairée par-dessus le monde)
+    BlockParticles.ts     # éclats texturés quand on casse un bloc (pool fixe, aucune allocation)
     shadedBox.ts          # boîte avec ombrage par face (même rendu que les chunks, sans lumières)
   items/
     items.ts              # objets non posables (id ≥ 256) : bâton, armes (dégâts, cadence, usure)
@@ -68,7 +73,12 @@ src/
     mobAI.ts              # logique pure : poursuite en ligne droite, saut si bloqué, errance
     MobManager.ts         # apparition/disparition, physique, attaques, bond, feu et rage la nuit
     MobModel.ts           # rig générique en boîtes (pattes, bras, yeux) + animations
+    HealthBar.ts          # barre de vie (sprite) au-dessus d’un monstre touché, s’efface après 5 s
     Flames.ts             # particules de feu (géométrie/matériaux partagés)
+  castle/
+    Castle.ts             # épreuves du château : zones déclencheuses, arène à vagues, piège, coffres, gardien
+    Fortress.ts           # pièges de la forteresse : dalles friables, piques rythmées, herse chronométrée,
+                          # faux coffre, gardien unique, points de réapparition
   crafting/
     recipes.ts            # recettes (data-driven) : entrées, sortie, besoin d’un établi
     Crafting.ts           # logique pure : vérifie, consomme, ajoute (rollback si plein)
@@ -81,6 +91,7 @@ src/
     Hud.ts                # viseur, barre d'objets, debug (F3)
     CraftingMenu.ts       # écran de fabrication (liste de recettes, souris/clavier/manette)
     icons.ts              # icônes de blocs dessinées depuis l’atlas
+    Minimap.ts            # mini-carte vue du dessus (tuiles 16×16 par chunk en cache, joueur, monstres, spawn)
     Menus.ts              # menu principal, pause
   storage/
     SaveManager.ts        # sérialisation des chunks modifiés dans IndexedDB
@@ -122,7 +133,11 @@ tests/
 4. Biomes, arbres, grottes, minerais.
 5. Inventaire complet (sac à dos), sons, outils de minage. Fait : ramassage des blocs (survie),
    mode créatif, établi et fabrication par liste de recettes, armes, 3 types de monstres
-   (Rôdeur, Bondisseur, Colosse) embrasés et enragés la nuit, vie et mort.
+   (Rôdeur, Bondisseur, Colosse) embrasés et enragés la nuit, vie et mort, mini-carte,
+   château de départ (labyrinthe, gouffre, arène, crypte piégée, salle secrète, gardien),
+   Forteresse noire plus dure (pièges, piques qui blessent, 2 monstres seulement, points de réapparition).
+   Les blocs du château (`unbreakable`) sont indestructibles en survie et on ne peut pas construire
+   dans les salles d'épreuves : sinon on contournerait les épreuves.
 6. (Optionnel) Multijoueur : serveur Node.js + WebSocket (`ws`), serveur autoritaire.
 
 ## Règles pour l'assistant

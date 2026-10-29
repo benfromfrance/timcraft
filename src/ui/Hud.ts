@@ -40,6 +40,10 @@ export class Hud {
   private readonly debug: HTMLPreElement;
   private readonly toast: HTMLDivElement;
   private toastTimer = 0;
+  private readonly banner: HTMLDivElement;
+  private readonly bannerTitle: HTMLDivElement;
+  private readonly bannerText: HTMLDivElement;
+  private bannerTimer = 0;
   private readonly hearts: HTMLCanvasElement[] = [];
   private readonly hurtFlash: HTMLDivElement;
   private readonly maxDurability: (id: number) => number | undefined;
@@ -64,6 +68,14 @@ export class Hud {
 
     this.toast = document.createElement('div');
     this.toast.className = 'toast';
+
+    this.banner = document.createElement('div');
+    this.banner.className = 'banner';
+    this.bannerTitle = document.createElement('div');
+    this.bannerTitle.className = 'banner-title';
+    this.bannerText = document.createElement('div');
+    this.bannerText.className = 'banner-text';
+    this.banner.append(this.bannerTitle, this.bannerText);
 
     const bar = document.createElement('div');
     bar.className = 'hotbar';
@@ -96,7 +108,7 @@ export class Hud {
     const status = document.createElement('div');
     status.className = 'status';
     status.append(health, bar);
-    root.append(this.hurtFlash, crosshair, this.debug, this.toast, status);
+    root.append(this.hurtFlash, crosshair, this.debug, this.banner, this.toast, status);
   }
 
   setSlots(views: readonly (SlotView | null)[]): void {
@@ -120,7 +132,9 @@ export class Hud {
   setHealth(health: number): void {
     if (health === this.shownHealth) return;
     this.shownHealth = health;
-    this.hearts.forEach((heart, i) => drawHeart(heart, Math.max(0, Math.min(1, (health - i * 2) / 2))));
+    this.hearts.forEach((heart, i) =>
+      drawHeart(heart, Math.max(0, Math.min(1, (health - i * 2) / 2))),
+    );
   }
 
   /** Visible in survival only. */
@@ -151,6 +165,20 @@ export class Hud {
     this.toast.textContent = text;
     this.toast.classList.add('visible');
     window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('visible'), 1200);
+    // Longer messages (chest loot) stay up long enough to be read.
+    const duration = Math.max(1200, text.length * 50);
+    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('visible'), duration);
+  }
+
+  /** Big title at the top of the screen, for events (castle trials). */
+  announce(title: string, text = '', seconds = 4): void {
+    this.bannerTitle.textContent = title;
+    this.bannerText.textContent = text;
+    this.banner.classList.add('visible');
+    window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(
+      () => this.banner.classList.remove('visible'),
+      seconds * 1000,
+    );
   }
 }

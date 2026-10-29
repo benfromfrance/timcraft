@@ -50,6 +50,7 @@ export class World {
     const lz = toLocalCoord(wz);
     chunk.set(lx, Math.floor(wy), lz, id);
     chunk.modified = true;
+    chunk.revision++;
 
     // Remesh this chunk, plus neighbours touching the edited block (diagonals included for AO).
     const dxs = lx === 0 ? [0, -1] : lx === CHUNK_SIZE - 1 ? [0, 1] : [0];

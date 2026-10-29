@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { Castle, type CastleEvents, type Loot } from '../castle/Castle';
+import { Fortress } from '../castle/Fortress';
 import { craft, type CraftResult } from '../crafting/Crafting';
 import type { Recipe } from '../crafting/recipes';
 import {
@@ -14,17 +16,21 @@ import { stepPlayer, type MoveInput } from '../player/Physics';
 import { HOTBAR_SIZE, Inventory } from '../player/Inventory';
 import { createPlayer, PLAYER_SIZE, playerIntersectsBlock, type Vec3 } from '../player/Player';
 import { raycast, type RayHit } from '../player/Raycast';
+import { BlockParticles } from '../render/BlockParticles';
 import { ChunkRenderer } from '../render/ChunkRenderer';
 import { Renderer } from '../render/Renderer';
 import { ViewModel } from '../render/ViewModel';
 import { CraftingMenu } from '../ui/CraftingMenu';
 import { Hud } from '../ui/Hud';
+import { Minimap } from '../ui/Minimap';
 import { WorkerPool } from '../workers/WorkerPool';
-import { BlockId, dropOf, SOLID } from '../world/blocks';
+import { BlockId, blockName, dropOf, isUnbreakable, SOLID } from '../world/blocks';
 import { CHUNK_HEIGHT } from '../world/Chunk';
 import { ChunkStreamer } from '../world/ChunkStreamer';
 import { toChunkCoord } from '../world/coords';
 import { DayNight } from '../world/DayNight';
+import { CASTLE_SPAWN } from '../world/generation/castle';
+import { TerrainGenerator } from '../world/generation/TerrainGenerator';
 import { World } from '../world/World';
 import { GamepadInput, PadButton } from './Gamepad';
 import { Input } from './Input';
@@ -47,6 +53,9 @@ const KNOCKBACK_SPEED = 6;
 const KNOCKBACK_LIFT = 5;
 /** Mobs are cleared around the spawn point when respawning. */
 const RESPAWN_SAFE_RADIUS = 24;
+/** Half-hearts lost per spike hit (at most one hit per invulnerability period). */
+const SPIKE_DAMAGE = 2;
+const SPIKE_KNOCKBACK = 0.5;
 
 const clampUnit = (v: number) => Math.max(-1, Math.min(1, v));
 const seconds = () => performance.now() / 1000;
@@ -58,6 +67,7 @@ export class Game {
   /** Playing with the controller (no pointer lock involved). */
   private padPlaying = false;
   private readonly hud: Hud;
+  private readonly minimap: Minimap;
   private readonly crafting: CraftingMenu;
   /** The crafting menu was opened from mouse play: relock the pointer when it closes. */
   private resumeWithMouse = false;
@@ -66,6 +76,9 @@ export class Game {
   private readonly streamer: ChunkStreamer;
   private readonly mobs: MobManager;
   private readonly viewModel: ViewModel;
+  private readonly particles: BlockParticles;
+  private readonly castle: Castle;
+  private readonly fortress: Fortress;
   private readonly dayNight = new DayNight();
   private wasNight = false;
   private readonly player = createPlayer();
@@ -112,6 +125,7 @@ export class Game {
     private readonly overlay: HTMLElement,
     private readonly seed: string,
   ) {
+    Object.assign(this.player.position, CASTLE_SPAWN);
     this.renderer = new Renderer(canvas, RENDER_DISTANCE);
     this.input = new Input(canvas);
     this.input.onLockChange = (locked) => {
@@ -129,6 +143,7 @@ export class Game {
     this.hud.setSelected(this.selected);
     this.hud.setHealth(this.health);
     this.refreshHotbar();
+    this.minimap = new Minimap(hudRoot);
 
     this.crafting = new CraftingMenu(document.body, this.renderer.atlasCanvas);
     this.crafting.onCraft = (recipe, atTable) => this.craftRecipe(recipe, atTable);
@@ -157,8 +172,33 @@ export class Game {
     });
 
     this.chunks = new ChunkRenderer(this.renderer.scene, this.renderer.chunkMaterial);
-    this.streamer = new ChunkStreamer(this.world, new WorkerPool(), this.chunks, seed, RENDER_DISTANCE);
+    this.streamer = new ChunkStreamer(
+      this.world,
+      new WorkerPool(),
+      this.chunks,
+      seed,
+      RENDER_DISTANCE,
+    );
     this.mobs = new MobManager(this.world, this.renderer.scene);
+    this.particles = new BlockParticles(this.renderer.scene, this.renderer.chunkMaterial);
+    // Same floor heights as the workers compute when they stamp the buildings into the terrain.
+    const terrain = new TerrainGenerator(seed);
+    const events: CastleEvents = {
+      announce: (title, text, seconds) => this.hud.announce(title, text, seconds),
+      notify: (text) => this.hud.notify(text),
+      burst: (x, y, z, id) => this.particles.burst(x, y, z, id),
+      rumble: (ms, strength) => this.pad.rumble(ms, strength),
+    };
+    this.castle = new Castle(this.world, this.mobs, terrain.castleFloor, events);
+    this.fortress = new Fortress(this.world, this.mobs, terrain.fortressFloor, {
+      ...events,
+      checkpoint: (position) => {
+        this.spawnPoint = { ...position };
+        this.hud.notify('Point de réapparition enregistré');
+      },
+    });
+    // Only the buildings' own monsters roam inside their walls.
+    this.mobs.canSpawnAt = (x, z) => !this.castle.contains(x, z) && !this.fortress.contains(x, z);
     this.mobs.onPlayerHit = (damage, from, knockback) => this.hurtPlayer(damage, from, knockback);
 
     this.highlight = new THREE.LineSegments(
@@ -204,12 +244,20 @@ export class Game {
     }
     this.updateTimeOfDay(dt);
     if (this.spawned) {
-      this.mobs.update(dt, this.player, { night: this.dayNight.isNight, light: this.dayNight.brightness });
+      this.mobs.update(dt, this.player, {
+        night: this.dayNight.isNight,
+        light: this.dayNight.brightness,
+      });
+      this.castle.update(dt, this.player.position);
+      this.fortress.update(dt, this.player);
+      this.checkSpikes();
     }
 
+    this.particles.update(dt, (x, y, z) => this.world.isSolid(x, y, z));
     this.updateCamera();
     this.updateTarget();
     this.handleActions(now);
+    this.minimap.update(this.world, this.player, this.mobs.mobs, this.spawnPoint, this.dayNight);
     const v = this.player.velocity;
     const walking = this.player.onGround && !this.player.flying;
     this.viewModel.update(dt, walking ? Math.hypot(v.x, v.z) : 0, this.renderer.aspect);
@@ -242,6 +290,11 @@ export class Game {
     Object.assign(this.previousPosition, p);
     this.spawnPoint = { ...p };
     this.spawned = true;
+    this.hud.announce(
+      'Le château de TimCraft',
+      'Droit devant : le château. Plus loin à l’est se dresse la Forteresse noire, bien plus dangereuse…',
+      7,
+    );
   }
 
   /** Gameplay input is live: playing (mouse or controller), alive, and no menu open. */
@@ -315,8 +368,12 @@ export class Game {
       this.showDebug = !this.showDebug;
       this.hud.setDebugVisible(this.showDebug);
     }
+    // M sits where QWERTY has ';' on AZERTY keyboards (codes are physical positions).
+    if (i.wasPressed('KeyM') || i.wasPressed('Semicolon'))
+      this.hud.notify(this.minimap.cycleZoom());
     if (i.wasPressed('KeyE') || this.padPressed(PadButton.DPAD_UP)) this.openCrafting(false);
-    if (i.wasPressed('KeyT') || this.padPressed(PadButton.DPAD_DOWN)) this.dayNight.skipToNextPhase();
+    if (i.wasPressed('KeyT') || this.padPressed(PadButton.DPAD_DOWN))
+      this.dayNight.skipToNextPhase();
     if (i.wasPressed('KeyC') || this.padPressed(PadButton.RIGHT_STICK)) {
       this.creative = !this.creative;
       this.refreshHotbar();
@@ -329,7 +386,8 @@ export class Game {
     let step = i.consumeWheel();
     if (this.padPressed(PadButton.RB) || this.padPressed(PadButton.DPAD_RIGHT)) step++;
     if (this.padPressed(PadButton.LB) || this.padPressed(PadButton.DPAD_LEFT)) step--;
-    if (step !== 0) this.select((((this.selected + step) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE);
+    if (step !== 0)
+      this.select((((this.selected + step) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE);
   }
 
   private select(index: number): void {
@@ -354,9 +412,7 @@ export class Game {
 
   private refreshHotbar(): void {
     this.hud.setSlots(
-      this.creative
-        ? this.creativeHotbar.map((id) => ({ id, count: null }))
-        : this.inventory.slots,
+      this.creative ? this.creativeHotbar.map((id) => ({ id, count: null })) : this.inventory.slots,
     );
     this.viewModel.setHeld(this.selectedItem());
   }
@@ -398,7 +454,8 @@ export class Game {
       mobHit && (!this.target || mobHit.distance < this.target.distance) ? mobHit.mob : null;
 
     this.highlight.visible = this.target !== null && this.targetMob === null;
-    if (this.target) this.highlight.position.set(this.target.x + 0.5, this.target.y + 0.5, this.target.z + 0.5);
+    if (this.target)
+      this.highlight.position.set(this.target.x + 0.5, this.target.y + 0.5, this.target.z + 0.5);
   }
 
   private handleActions(now: number): void {
@@ -434,6 +491,10 @@ export class Game {
       this.openCrafting(true);
       return;
     }
+    if (targetId === BlockId.CHEST && (usePressed || hitPressed)) {
+      this.openChest(hit.x, hit.y, hit.z);
+      return;
+    }
 
     // Blocks: act on press, then repeat while held.
     const repeat = now - this.lastAction > ACTION_REPEAT_MS;
@@ -443,8 +504,13 @@ export class Game {
     if (breaking) {
       this.lastAction = now;
       this.viewModel.swingArm();
+      if (!this.creative && isUnbreakable(targetId)) {
+        this.hud.notify(`${blockName(targetId)} : indestructible`);
+        return;
+      }
       // The bottom layer stays so the player can never fall out of the world.
       if (hit.y === 0 || !this.world.setBlock(hit.x, hit.y, hit.z, BlockId.AIR)) return;
+      this.particles.burst(hit.x, hit.y, hit.z, targetId);
       if (this.padDown(PadButton.RT)) this.pad.rumble(60, 0.35);
       if (!this.creative) this.collect(dropOf(targetId));
     } else if (placing) {
@@ -456,6 +522,11 @@ export class Game {
       const z = hit.z + hit.nz;
       const free = this.world.getBlock(x, y, z) === BlockId.AIR;
       if (!free || (SOLID[id] && playerIntersectsBlock(this.player, x, y, z))) return;
+      const buildable = this.castle.canBuild(x, y, z) && this.fortress.canBuild(x, y, z);
+      if (!this.creative && !buildable) {
+        this.hud.notify('Impossible de construire dans le château');
+        return;
+      }
       if (!this.world.setBlock(x, y, z, id)) return;
       this.viewModel.swingArm();
       if (this.padDown(PadButton.LT)) this.pad.rumble(40, 0.2);
@@ -466,6 +537,25 @@ export class Game {
     }
   }
 
+  /** Chest loot always goes to the survival inventory, even when opened in creative. */
+  private openChest(x: number, y: number, z: number): void {
+    const building = this.fortress.contains(x, z) ? this.fortress : this.castle;
+    const loot: Loot[] = building.openChest(x, y, z);
+    this.viewModel.swingArm();
+    this.pad.rumble(80, 0.4);
+    let lost = 0;
+    for (const { id, count } of loot) lost += this.inventory.add(id, count);
+    this.refreshHotbar();
+    const list = loot.map(({ id, count }) =>
+      count > 1 ? `${count} × ${itemName(id)}` : itemName(id),
+    );
+    this.hud.notify(
+      loot.length === 0
+        ? 'Le coffre est vide'
+        : `Trésor : ${list.join(', ')}${lost > 0 ? ' (inventaire plein !)' : ''}`,
+    );
+  }
+
   private attack(mob: Mob, weapon: WeaponStats): void {
     this.viewModel.swingArm();
     const killed = this.mobs.hit(mob, weapon.damage, this.player.position);
@@ -474,7 +564,8 @@ export class Game {
 
     // Weapons wear out with each hit.
     const id = this.selectedItem();
-    if (id !== null && this.inventory.wear(this.selected)) this.hud.notify(`${itemName(id)} : cassée !`);
+    if (id !== null && this.inventory.wear(this.selected))
+      this.hud.notify(`${itemName(id)} : cassée !`);
     this.refreshHotbar();
   }
 
@@ -501,6 +592,24 @@ export class Game {
     if (this.health === 0) this.die();
   }
 
+  /** Spikes hurt while the player's body is in them, pushing them on in the way they were going. */
+  private checkSpikes(): void {
+    if (this.dead) return;
+    const p = this.player.position;
+    const v = this.player.velocity;
+    const half = PLAYER_SIZE.width / 2 - 0.05;
+    for (const y of [p.y + 0.1, p.y + 1]) {
+      for (const dx of [-half, half]) {
+        for (const dz of [-half, half]) {
+          const id = this.world.getBlock(Math.floor(p.x + dx), Math.floor(y), Math.floor(p.z + dz));
+          if (id !== BlockId.SPIKES) continue;
+          this.hurtPlayer(SPIKE_DAMAGE, { x: p.x - v.x, y: p.y, z: p.z - v.z }, SPIKE_KNOCKBACK);
+          return;
+        }
+      }
+    }
+  }
+
   /** Slowly heals after a few seconds without taking damage. */
   private regenerate(dt: number): void {
     if (this.dead || this.health >= MAX_HEALTH || seconds() - this.lastHurt < REGEN_DELAY) return;
@@ -513,6 +622,7 @@ export class Game {
 
   private die(): void {
     this.dead = true;
+    this.castle.onPlayerDeath();
     this.resumeWithMouse = false;
     this.crafting.close();
     if (this.input.locked) document.exitPointerLock();
