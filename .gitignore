@@ -1,0 +1,23 @@
+# Dependencies & build output
+node_modules
+dist
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors & OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (per-machine)
+.claude/settings.local.json

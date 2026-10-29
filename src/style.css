@@ -1,0 +1,450 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: system-ui, sans-serif;
+  color: #fff;
+  user-select: none;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20; /* hotbar stays visible above the crafting menu */
+}
+
+body.menu-open .crosshair {
+  display: none;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  background:
+    linear-gradient(#fff, #fff) center / 2px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 2px no-repeat;
+}
+
+.status {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.health {
+  display: flex;
+  gap: 3px;
+  padding-left: 4px;
+}
+
+.health[hidden] {
+  display: none;
+}
+
+.health canvas {
+  width: 21px;
+  height: 18px;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.6));
+}
+
+.hotbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+}
+
+.slot {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+.slot.selected {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.slot canvas {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.slot .key {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.toast {
+  position: absolute;
+  bottom: 112px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  text-shadow: 1px 1px 0 #000;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.toast.visible {
+  opacity: 1;
+}
+
+.debug {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  font: 13px/1.4 ui-monospace, monospace;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+}
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 20, 35, 0.6);
+  cursor: pointer;
+}
+
+#overlay[hidden] {
+  display: none;
+}
+
+.panel {
+  text-align: center;
+  padding: 24px 32px;
+  max-width: calc(100vw - 32px);
+}
+
+.panel h1 {
+  margin: 0 0 8px;
+  font-size: 48px;
+  letter-spacing: 2px;
+  text-shadow: 3px 3px 0 #2d4a1c;
+}
+
+.cta {
+  font-size: 20px;
+  margin: 0 0 20px;
+}
+
+.controls {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.9;
+  opacity: 0.9;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 3px;
+  font: 12px ui-monospace, monospace;
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px 40px;
+}
+
+.columns h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.75;
+  text-align: left;
+}
+
+.slot .count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 13px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.mode {
+  margin: -8px 0 20px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr); /* lets the panel shrink and scroll its list */
+  place-items: center;
+  padding: 16px 16px 112px; /* keep clear of the hotbar and hearts */
+  background: rgba(10, 20, 35, 0.55);
+}
+
+.menu-backdrop[hidden] {
+  display: none;
+}
+
+.craft-panel {
+  width: min(520px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #2b2f36;
+  border: 2px solid #5c6470;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.craft-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #454b55;
+}
+
+.craft-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.craft-panel button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.craft-panel .close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  opacity: 0.7;
+}
+
+.recipes {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.recipe {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.recipe.selected {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.recipe.unavailable .output,
+.recipe.unavailable .name {
+  opacity: 0.45;
+}
+
+.recipe .output {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.recipe .output canvas,
+.recipe .ingredient canvas {
+  image-rendering: pixelated;
+}
+
+.recipe .output span {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.recipe .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.recipe .name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.recipe .inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+
+.recipe .ingredient {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #b9e6a0;
+}
+
+.recipe .ingredient.lacking {
+  color: #f0a0a0;
+}
+
+.recipe .hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #f0c070;
+}
+
+.recipe button {
+  flex: none;
+  padding: 6px 12px;
+  background: #4f8a3a;
+  border: none;
+  border-radius: 4px;
+}
+
+.recipe button:disabled {
+  background: #4a4f57;
+  opacity: 0.6;
+  cursor: default;
+}
+
+.craft-panel footer {
+  padding: 10px 16px;
+  border-top: 1px solid #454b55;
+  font-size: 12px;
+  line-height: 1.9;
+  opacity: 0.8;
+}
+
+.slot .wear {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 4px;
+  height: 3px;
+  background: #000;
+}
+
+.slot .wear::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--ratio, 1) * 100%);
+  background: hsl(var(--hue, 120) 80% 50%);
+}
+
+.slot .wear[hidden] {
+  display: none;
+}
+
+.hurt-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.55));
+}
+
+.hurt-flash.active {
+  animation: hurt 0.45s ease-out;
+}
+
+@keyframes hurt {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+#death {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(90, 0, 0, 0.55);
+}
+
+#death[hidden] {
+  display: none;
+}
+
+#death h1 {
+  text-shadow: 3px 3px 0 #400;
+}
+
+#death button {
+  margin-top: 8px;
+  padding: 10px 28px;
+  font: inherit;
+  font-size: 18px;
+  color: #fff;
+  background: #4f8a3a;
+  border: 2px solid #8bc46c;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#death .hint {
+  font-size: 13px;
+  opacity: 0.8;
+}

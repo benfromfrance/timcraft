@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TimCraft</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="hud"></div>
+    <div id="overlay">
+      <div class="panel">
+        <h1>TimCraft</h1>
+        <p class="cta">Cliquez pour jouer — ou appuyez sur <kbd>A</kbd> / <kbd>Menu</kbd> à la manette</p>
+        <p class="mode">Mode survie : ramassez des blocs, fabriquez des armes… et méfiez-vous de la nuit, les monstres s’y embrasent.</p>
+        <div class="columns">
+          <section>
+            <h2>Clavier / souris</h2>
+            <ul class="controls">
+              <li><kbd>Z Q S D</kbd> / <kbd>W A S D</kbd> se déplacer</li>
+              <li><kbd>Espace</kbd> sauter · <kbd>Maj</kbd> courir</li>
+              <li><kbd>F</kbd> mode vol (<kbd>Espace</kbd> monter, <kbd>Maj</kbd> descendre)</li>
+              <li><kbd>Clic gauche</kbd> casser / frapper · <kbd>Clic droit</kbd> poser</li>
+              <li><kbd>Clic molette</kbd> copier le bloc visé</li>
+              <li><kbd>1</kbd>–<kbd>9</kbd> / molette : choisir un bloc</li>
+              <li><kbd>E</kbd> fabrication · <kbd>Clic droit</kbd> sur un établi</li>
+              <li><kbd>C</kbd> mode survie / créatif · <kbd>T</kbd> passer au jour / à la nuit</li>
+              <li><kbd>F3</kbd> infos de debug · <kbd>Échap</kbd> pause</li>
+            </ul>
+          </section>
+          <section>
+            <h2>Manette Xbox</h2>
+            <ul class="controls">
+              <li><kbd>Stick G</kbd> se déplacer · <kbd>Stick D</kbd> regarder</li>
+              <li><kbd>A</kbd> sauter · <kbd>B</kbd> / clic <kbd>Stick G</kbd> courir</li>
+              <li><kbd>Y</kbd> mode vol (<kbd>A</kbd> monter, <kbd>B</kbd> descendre)</li>
+              <li><kbd>RT</kbd> casser / frapper · <kbd>LT</kbd> poser</li>
+              <li><kbd>X</kbd> copier le bloc visé</li>
+              <li><kbd>LB</kbd> / <kbd>RB</kbd> ou croix ←→ : choisir un bloc</li>
+              <li><kbd>Croix haut</kbd> fabrication · <kbd>LT</kbd> sur un établi</li>
+              <li>Clic <kbd>Stick D</kbd> survie / créatif · <kbd>Croix bas</kbd> jour / nuit</li>
+              <li><kbd>Affichage</kbd> infos de debug · <kbd>Menu</kbd> pause</li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+    <div id="death" hidden>
+      <div class="panel">
+        <h1>Vous êtes mort</h1>
+        <p>Les monstres ont eu raison de vous. Votre inventaire est conservé.</p>
+        <button type="button">Réapparaître</button>
+        <p class="hint">ou <kbd>A</kbd> à la manette</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
