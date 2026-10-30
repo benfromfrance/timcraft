@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Castle, type CastleEvents, type Loot } from '../castle/Castle';
+import { Citadel } from '../castle/Citadel';
 import { Fortress } from '../castle/Fortress';
 import { craft, type CraftResult } from '../crafting/Crafting';
 import type { Recipe } from '../crafting/recipes';
@@ -79,6 +80,7 @@ export class Game {
   private readonly particles: BlockParticles;
   private readonly castle: Castle;
   private readonly fortress: Fortress;
+  private readonly citadel: Citadel;
   private readonly dayNight = new DayNight();
   private wasNight = false;
   private readonly player = createPlayer();
@@ -190,15 +192,22 @@ export class Game {
       rumble: (ms, strength) => this.pad.rumble(ms, strength),
     };
     this.castle = new Castle(this.world, this.mobs, terrain.castleFloor, events);
+    const checkpoint = (position: Vec3) => {
+      this.spawnPoint = { ...position };
+      this.hud.notify('Point de réapparition enregistré');
+    };
     this.fortress = new Fortress(this.world, this.mobs, terrain.fortressFloor, {
       ...events,
-      checkpoint: (position) => {
-        this.spawnPoint = { ...position };
-        this.hud.notify('Point de réapparition enregistré');
-      },
+      checkpoint,
     });
-    // Only the buildings' own monsters roam inside their walls.
-    this.mobs.canSpawnAt = (x, z) => !this.castle.contains(x, z) && !this.fortress.contains(x, z);
+    this.citadel = new Citadel(this.world, terrain.citadelFloor, this.renderer.scene, {
+      ...events,
+      checkpoint,
+      hurt: (damage, from, knockback) => this.hurtPlayer(damage, from, knockback),
+    });
+    // Only the buildings' own monsters roam inside their walls (the citadel has none at all).
+    this.mobs.canSpawnAt = (x, z) =>
+      !this.castle.contains(x, z) && !this.fortress.contains(x, z) && !this.citadel.contains(x, z);
     this.mobs.onPlayerHit = (damage, from, knockback) => this.hurtPlayer(damage, from, knockback);
 
     this.highlight = new THREE.LineSegments(
@@ -250,6 +259,7 @@ export class Game {
       });
       this.castle.update(dt, this.player.position);
       this.fortress.update(dt, this.player);
+      this.citadel.update(dt, this.player);
       this.checkSpikes();
     }
 
@@ -292,7 +302,7 @@ export class Game {
     this.spawned = true;
     this.hud.announce(
       'Le château de TimCraft',
-      'Droit devant : le château. Plus loin à l’est se dresse la Forteresse noire, bien plus dangereuse…',
+      'Droit devant : le château. À l’est, la Forteresse noire ; à l’ouest, la Citadelle maudite, la pire de toutes…',
       7,
     );
   }
@@ -446,9 +456,11 @@ export class Game {
   private updateTarget(): void {
     const camera = this.renderer.camera;
     camera.getWorldDirection(this.lookDir);
-    this.target = raycast(camera.position, this.lookDir, REACH, (x, y, z) =>
-      this.world.isSolid(x, y, z),
-    );
+    // Ghost slabs are never highlighted: aiming must not reveal the invisible bridge.
+    this.target = raycast(camera.position, this.lookDir, REACH, (x, y, z) => {
+      const id = this.world.getBlock(x, y, z);
+      return SOLID[id] === 1 && id !== BlockId.GHOST && id !== BlockId.GHOST_SHOWN;
+    });
     const mobHit = this.mobs.raycast(camera.position, this.lookDir, ATTACK_REACH);
     this.targetMob =
       mobHit && (!this.target || mobHit.distance < this.target.distance) ? mobHit.mob : null;
@@ -522,7 +534,10 @@ export class Game {
       const z = hit.z + hit.nz;
       const free = this.world.getBlock(x, y, z) === BlockId.AIR;
       if (!free || (SOLID[id] && playerIntersectsBlock(this.player, x, y, z))) return;
-      const buildable = this.castle.canBuild(x, y, z) && this.fortress.canBuild(x, y, z);
+      const buildable =
+        this.castle.canBuild(x, y, z) &&
+        this.fortress.canBuild(x, y, z) &&
+        this.citadel.canBuild(x, y, z);
       if (!this.creative && !buildable) {
         this.hud.notify('Impossible de construire dans le château');
         return;
@@ -539,7 +554,11 @@ export class Game {
 
   /** Chest loot always goes to the survival inventory, even when opened in creative. */
   private openChest(x: number, y: number, z: number): void {
-    const building = this.fortress.contains(x, z) ? this.fortress : this.castle;
+    const building = this.fortress.contains(x, z)
+      ? this.fortress
+      : this.citadel.contains(x, z)
+        ? this.citadel
+        : this.castle;
     const loot: Loot[] = building.openChest(x, y, z);
     this.viewModel.swingArm();
     this.pad.rumble(80, 0.4);

@@ -170,6 +170,25 @@ const PAINTERS: Record<number, PainterFactory> = {
     return vary(rand, edge ? [198, 148, 36] : [240, 196, 64], 0.08);
   },
   [Tile.RUNE_SWORD]: swordPainter([70, 170, 210], [196, 244, 255]),
+  [Tile.CITADEL_STONE]: (rand) => castleStone(rand, false, [184, 176, 152], [120, 112, 96]),
+  // Fully transparent: the alpha test discards every pixel, so the block is solid but unseen.
+  [Tile.GHOST]: () => () => CLEAR,
+  [Tile.GHOST_SHOWN]: (rand) => (x, y) => {
+    const edge = x === 0 || y === 0 || x === TILE_SIZE - 1 || y === TILE_SIZE - 1;
+    const sparkle = (x * 7 + y * 3) % 11 === 0;
+    if (edge) return vary(rand, [150, 236, 255], 0.08);
+    return sparkle ? [220, 250, 255, 255] : CLEAR;
+  },
+  [Tile.ARROW_TRAP]: (rand) => {
+    const stone = castleStone(rand, false, [184, 176, 152], [120, 112, 96]);
+    return (x, y) => {
+      const hole = Math.hypot(x - 7.5, y - 7.5);
+      if (hole < 2.6) return vary(rand, [28, 24, 20], 0.1);
+      if (hole < 3.6) return vary(rand, [96, 88, 74], 0.1);
+      return stone(x, y);
+    };
+  },
+  [Tile.SPECTRAL_SWORD]: swordPainter([150, 90, 220], [232, 210, 255]),
   [Tile.DARK_STONE]: (rand) => castleStone(rand, false, [70, 64, 82], [34, 30, 42]),
   // Large square slabs; the crumbling ones use the same tile, so they cannot be told apart.
   [Tile.FLAGSTONE]: (rand) => (x, y) => {

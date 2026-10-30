@@ -10,6 +10,7 @@ export const ItemId = {
   STONE_AXE: 259,
   RUNE_SWORD: 260,
   RUNE_AXE: 261,
+  SPECTRAL_SWORD: 262,
 } as const;
 
 export interface WeaponStats {
@@ -69,6 +70,14 @@ const DEFS: ItemDef[] = [
     maxStack: 1,
     durability: 500,
     weapon: { damage: 14, cooldown: 0.85 },
+  },
+  {
+    id: ItemId.SPECTRAL_SWORD,
+    name: 'Lame spectrale',
+    tile: Tile.SPECTRAL_SWORD,
+    maxStack: 1,
+    durability: 800,
+    weapon: { damage: 12, cooldown: 0.4 },
   },
 ];
 

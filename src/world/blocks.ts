@@ -39,6 +39,11 @@ export const Tile = {
   SPIKES_TOP: 29,
   PLATE: 30,
   RUNE_AXE: 31,
+  CITADEL_STONE: 32,
+  GHOST: 33,
+  GHOST_SHOWN: 34,
+  ARROW_TRAP: 35,
+  SPECTRAL_SWORD: 36,
 } as const;
 
 export const BlockId = {
@@ -67,6 +72,12 @@ export const BlockId = {
   CRUMBLE: 20,
   SPIKES: 21,
   PLATE: 22,
+  // Citadel (see generation/citadel.ts). GHOST is solid but invisible; HIDDEN_PLATE looks like FLAGSTONE.
+  CITADEL_STONE: 23,
+  GHOST: 24,
+  GHOST_SHOWN: 25,
+  ARROW_TRAP: 26,
+  HIDDEN_PLATE: 27,
 } as const;
 export type BlockId = (typeof BlockId)[keyof typeof BlockId];
 
@@ -283,6 +294,51 @@ const DEFS: BlockDef[] = [
     solid: true,
     transparent: false,
     tiles: { top: Tile.PLATE, bottom: Tile.FLAGSTONE, side: Tile.FLAGSTONE },
+    unbreakable: true,
+  },
+  {
+    id: BlockId.CITADEL_STONE,
+    mapColor: 0xb8b09a,
+    name: 'Pierre de la citadelle',
+    solid: true,
+    transparent: false,
+    tiles: all(Tile.CITADEL_STONE),
+    unbreakable: true,
+  },
+  {
+    id: BlockId.GHOST,
+    mapColor: 0x8a8a92,
+    name: 'Dalle invisible',
+    solid: true,
+    transparent: true,
+    tiles: all(Tile.GHOST),
+    unbreakable: true,
+  },
+  {
+    id: BlockId.GHOST_SHOWN,
+    mapColor: 0x8a8a92,
+    name: 'Dalle spectrale',
+    solid: true,
+    transparent: true,
+    tiles: all(Tile.GHOST_SHOWN),
+    unbreakable: true,
+  },
+  {
+    id: BlockId.ARROW_TRAP,
+    mapColor: 0xb8b09a,
+    name: 'Lance-flèches',
+    solid: true,
+    transparent: false,
+    tiles: all(Tile.ARROW_TRAP),
+    unbreakable: true,
+  },
+  {
+    id: BlockId.HIDDEN_PLATE,
+    mapColor: 0x6e6a62,
+    name: 'Dalle',
+    solid: true,
+    transparent: false,
+    tiles: all(Tile.FLAGSTONE),
     unbreakable: true,
   },
 ];

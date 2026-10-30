@@ -1,7 +1,7 @@
 import { ItemId } from '../items/items';
 import type { Mob, MobManager } from '../mobs/MobManager';
 import { MOB_TYPES, type MobType } from '../mobs/mobTypes';
-import { playerIntersectsBlock, type PlayerState, type Vec3 } from '../player/Player';
+import type { PlayerState, Vec3 } from '../player/Player';
 import { BlockId } from '../world/blocks';
 import { inZone, zone, type CastlePos, type CastleZone } from '../world/generation/blueprint';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../world/generation/fortress';
 import type { World } from '../world/World';
 import type { CastleEvents, Loot } from './Castle';
+import { Crumbling, fillZone, playerInZone, Rhythm, underfoot, type Cell } from './traps';
 
 export interface FortressEvents extends CastleEvents {
   /** The player will respawn here. */
@@ -44,21 +45,14 @@ const CRUMBLE_DELAY = 0.6;
 const CRUMBLE_RESTORE = 5;
 /** Seconds the race portcullis stays open after leaving the plate. */
 const PLATE_OPEN = 5;
-/** Each group of rhythm spikes is up for `up` seconds every `period`, `offset` after the previous. */
-const RHYTHM = { period: 2.4, up: 1.2, offset: 0.8 };
+/** Each group of rhythm spikes is up for `on` seconds every `period`, `offset` after the previous. */
+const RHYTHM = { period: 2.4, on: 1.2, offset: 0.8 };
 /** The rhythm spikes only move while the player is around (each change remeshes a chunk). */
 const RHYTHM_AREA = zone(64, 88, -3, 9, -44, -23);
 const GUARDIAN_HEALTH = 60;
 
 const typeOf = (id: MobType['id']) => MOB_TYPES.find((t) => t.id === id) ?? MOB_TYPES[0];
 const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
-
-interface Timed {
-  x: number;
-  y: number;
-  z: number;
-  timer: number;
-}
 
 /**
  * The Black Fortress at runtime: traps rather than fights. Slabs crumble under the player,
@@ -68,11 +62,8 @@ interface Timed {
 export class Fortress {
   private readonly entered = new Set<ZoneName>();
   private readonly chests = new Map<string, FortressChestId>();
-  private readonly crumbling = new Map<string, Timed>();
-  private readonly fallen = new Map<string, Timed>();
-  private rhythmTime = 0;
-  /** Spikes are up in the blueprint; the first update sets each group right. */
-  private readonly rhythmUp = RHYTHM_GROUPS.map(() => true);
+  private readonly crumbling: Crumbling;
+  private readonly rhythm: Rhythm;
   /** Seconds before the race portcullis closes, or null while it is closed. */
   private gateTimer: number | null = null;
   private shownCountdown = 0;
@@ -91,6 +82,14 @@ export class Fortress {
       const c = chests[id];
       this.chests.set(key(c.x, floorY + c.r, c.z), id);
     }
+    this.crumbling = new Crumbling(world, events.burst, CRUMBLE_DELAY, CRUMBLE_RESTORE);
+    const groups = RHYTHM_GROUPS.map((columns) => {
+      const cells: Cell[] = [];
+      for (const x of columns)
+        for (let z = RHYTHM_Z[0]; z <= RHYTHM_Z[1]; z++) cells.push([x, floorY, z]);
+      return cells;
+    });
+    this.rhythm = new Rhythm(world, groups, RHYTHM, BlockId.SPIKES);
   }
 
   contains(x: number, z: number): boolean {
@@ -112,9 +111,11 @@ export class Fortress {
       this.entered.add(name);
       this.enter(name);
     }
-    if (player.onGround) this.checkUnderfoot(player);
-    this.updateCrumbling(dt, player);
-    if (inZone(RHYTHM_AREA, x, r, z)) this.updateRhythm(dt);
+    underfoot(this.world, player, (id) => {
+      if (id === BlockId.PLATE) this.openGate();
+    });
+    this.crumbling.update(dt, player);
+    if (inZone(RHYTHM_AREA, x, r, z)) this.rhythm.update(dt);
     this.updateGate(dt, player);
     this.updateGuardian(inZone(FORTRESS_ZONES.guardian, x, r, z));
   }
@@ -202,57 +203,6 @@ export class Fortress {
     }
   }
 
-  /** Blocks under the four corners of the player's feet: slabs start crumbling, plates trigger. */
-  private checkUnderfoot(player: PlayerState): void {
-    const p = player.position;
-    const y = Math.floor(p.y - 0.05);
-    for (const dx of [-0.29, 0.29]) {
-      for (const dz of [-0.29, 0.29]) {
-        const x = Math.floor(p.x + dx);
-        const z = Math.floor(p.z + dz);
-        const id = this.world.getBlock(x, y, z);
-        if (id === BlockId.CRUMBLE && !this.crumbling.has(key(x, y, z))) {
-          this.crumbling.set(key(x, y, z), { x, y, z, timer: CRUMBLE_DELAY });
-        } else if (id === BlockId.PLATE) {
-          this.openGate();
-        }
-      }
-    }
-  }
-
-  private updateCrumbling(dt: number, player: PlayerState): void {
-    for (const [k, slab] of this.crumbling) {
-      slab.timer -= dt;
-      if (slab.timer > 0) continue;
-      this.crumbling.delete(k);
-      this.world.setBlock(slab.x, slab.y, slab.z, BlockId.AIR);
-      this.events.burst(slab.x, slab.y, slab.z, BlockId.CRUMBLE);
-      this.fallen.set(k, { ...slab, timer: CRUMBLE_RESTORE });
-    }
-    for (const [k, slab] of this.fallen) {
-      slab.timer -= dt;
-      if (slab.timer > 0 || playerIntersectsBlock(player, slab.x, slab.y, slab.z)) continue;
-      this.fallen.delete(k);
-      this.world.setBlock(slab.x, slab.y, slab.z, BlockId.CRUMBLE);
-    }
-  }
-
-  private updateRhythm(dt: number): void {
-    this.rhythmTime += dt;
-    RHYTHM_GROUPS.forEach((columns, g) => {
-      const phase = (this.rhythmTime + g * RHYTHM.offset) % RHYTHM.period;
-      const up = phase < RHYTHM.up;
-      if (up === this.rhythmUp[g]) return;
-      this.rhythmUp[g] = up;
-      const y = this.floorY;
-      for (const x of columns) {
-        for (let z = RHYTHM_Z[0]; z <= RHYTHM_Z[1]; z++) {
-          this.world.setBlock(x, y, z, up ? BlockId.SPIKES : BlockId.AIR);
-        }
-      }
-    });
-  }
-
   private openGate(): void {
     if (this.gateTimer === null) {
       this.setDoor(FORTRESS_DOORS.raceExit, BlockId.AIR);
@@ -274,11 +224,7 @@ export class Fortress {
     if (this.gateTimer > 0) return;
     // Never close the portcullis on the player.
     const door = FORTRESS_DOORS.raceExit;
-    for (let r = door.minR; r <= door.maxR; r++) {
-      for (let x = door.minX; x <= door.maxX; x++) {
-        if (playerIntersectsBlock(player, x, this.floorY + r, door.minZ)) return;
-      }
-    }
+    if (playerInZone(player, this.floorY, door)) return;
     this.gateTimer = null;
     this.shownCountdown = 0;
     this.setDoor(door, BlockId.PORTCULLIS);
@@ -324,10 +270,6 @@ export class Fortress {
   }
 
   private setDoor(door: CastleZone, id: number): void {
-    for (let r = door.minR; r <= door.maxR; r++) {
-      for (let z = door.minZ; z <= door.maxZ; z++) {
-        for (let x = door.minX; x <= door.maxX; x++) this.world.setBlock(x, this.floorY + r, z, id);
-      }
-    }
+    fillZone(this.world, this.floorY, door, id);
   }
 }

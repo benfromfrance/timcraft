@@ -54,6 +54,7 @@ src/
       blueprint.ts        # bâtiment = volume de blocs pur + estampillage dans les chunks (terrain nivelé autour)
       castle.ts           # plan du château (nord du spawn)
       fortress.ts         # plan de la Forteresse noire (à l’est) : 9 salles piégées
+      citadel.ts          # plan de la Citadelle maudite (à l’ouest) : que des pièges, aucun monstre
     meshing/
       mesher.ts           # construction des géométries (faces visibles + ambient occlusion)
   workers/
@@ -79,6 +80,10 @@ src/
     Castle.ts             # épreuves du château : zones déclencheuses, arène à vagues, piège, coffres, gardien
     Fortress.ts           # pièges de la forteresse : dalles friables, piques rythmées, herse chronométrée,
                           # faux coffre, gardien unique, points de réapparition
+    Citadel.ts            # pièges de la citadelle : flèches, pont invisible, dalles fantômes, vent,
+                          # pluie de pierres, dalles à piques cachées, effondrement final
+    Projectiles.ts        # flèches et pierres (pools fixes)
+    traps.ts              # mécanismes partagés : dalles friables, rythmes, portes
   crafting/
     recipes.ts            # recettes (data-driven) : entrées, sortie, besoin d’un établi
     Crafting.ts           # logique pure : vérifie, consomme, ajoute (rollback si plein)
@@ -135,7 +140,8 @@ tests/
    mode créatif, établi et fabrication par liste de recettes, armes, 3 types de monstres
    (Rôdeur, Bondisseur, Colosse) embrasés et enragés la nuit, vie et mort, mini-carte,
    château de départ (labyrinthe, gouffre, arène, crypte piégée, salle secrète, gardien),
-   Forteresse noire plus dure (pièges, piques qui blessent, 2 monstres seulement, points de réapparition).
+   Forteresse noire plus dure (pièges, piques qui blessent, 2 monstres seulement, points de réapparition),
+   Citadelle maudite, la plus dure (aucun monstre, uniquement des pièges).
    Les blocs du château (`unbreakable`) sont indestructibles en survie et on ne peut pas construire
    dans les salles d'épreuves : sinon on contournerait les épreuves.
 6. (Optionnel) Multijoueur : serveur Node.js + WebSocket (`ws`), serveur autoritaire.

@@ -20,6 +20,9 @@ ou à la manette Xbox.
 - **La Forteresse noire**, plus loin à l'est, bien plus dure : chemin d'or au-dessus d'une fosse à piques,
   piques rythmées, faux trésor piégé, course contre une herse, pont de dalles qui s'effritent et un gardien
   solitaire sur des passerelles — beaucoup de pièges, seulement deux monstres
+- **La Citadelle maudite**, à l'ouest, la plus dure des trois : aucun monstre, rien que des pièges —
+  couloir de flèches, pont invisible, dalles fantômes, pont balayé par le vent, pluie de pierres,
+  labyrinthe aux dalles piégées, et une salle du trésor qui s'effondre derrière vous
 - **3 monstres** : le Rôdeur, le Bondisseur (qui bondit sur vous) et le Colosse (lent mais redoutable)
 - **Cycle jour/nuit** de 10 minutes : soleil, lune, étoiles — la nuit, les monstres s'embrasent et deviennent enragés
 - **Mini-carte** vue du dessus avec relief, monstres, point de réapparition, coordonnées et heure
